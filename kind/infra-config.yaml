@@ -1,0 +1,17 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: infra
+networking:
+  apiServerAddress: 192.168.1.200
+  apiServerPort: 6443
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30080
+    hostPort: 80
+    protocol: TCP
+    listenAddress: 192.168.1.200
+  - containerPort: 30443
+    hostPort: 443
+    protocol: TCP
+    listenAddress: 192.168.1.200

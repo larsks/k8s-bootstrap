@@ -1,0 +1,50 @@
+- hosts: localhost
+  gather_facts: false
+  collections:
+    - kubernetes.core
+    - ansible.builtin
+  environment:
+    VAULT_CACERT: "{{ ansible_env.PWD }}/config/certs/house-root-ca.crt"
+    VAULT_ADDR: https://vault.services.house
+  tasks:
+    - name: get list of kind clusters
+      command: kind get clusters
+      register: clusters
+      changed_when: false
+
+    - name: create infra cluster
+      when: >-
+        "infra" not in clusters.stdout_lines
+      command: kind create cluster --config kind/infra-config.yaml
+
+    - name: "create and populate config namespace"
+      k8s:
+        definition: "{{ lookup('kubernetes.core.kustomize', dir='config') }}"
+
+    - name: "populate house-vault auth token"
+      command:
+        chdir: vault
+        cmd: sh update-house-vault-secret.sh
+
+    - name: "install applications"
+      k8s:
+        definition: "{{ lookup('kubernetes.core.kustomize', dir=item) }}"
+      register: kustomize_check
+      until: kustomize_check is not failed
+      retries: 10
+      delay: 6
+      loop:
+        - ../external-secrets/overlay/common
+        - ../external-secrets/clustersecretstores
+        - ../step-certificates/overlay/common
+        - ../cert-manager/overlay/common
+        - ../nginx-ingress/overlay/common
+        - ../whoami/overlay/infra
+
+    - name: "verify install"
+      uri:
+        url: "https://whoami.apps.infra.house"
+      register: url_check
+      until: url_check is success
+      retries: 10
+      delay: 12
